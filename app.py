@@ -1,6 +1,4 @@
-# app.py
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.seasonal import seasonal_decompose
@@ -8,39 +6,39 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 st.set_page_config(layout="wide")
 st.title("📊 Magnificent Stocks Time Series Decomposition App")
 
-# Sidebar inputs
+# Load Excel from GitHub URL
+@st.cache_data
+def load_data():
+    url = "https://raw.githubusercontent.com/AliJaffri/Time-Series-Decomposition/main/magnificent_stocks.xlsx"
+    df = pd.read_excel(url, index_col=0)
+    df.index = pd.to_datetime(df.index)
+    df = df.asfreq('B')  # Business days
+    df = df.interpolate()
+    return df
+
+df = load_data()
+
+# Sidebar for user selection
 st.sidebar.header("Stock Settings")
-ticker = st.sidebar.selectbox(
-    "Select a stock ticker",
-    ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA'],
-    index=0
-)
+ticker = st.sidebar.selectbox("Select a stock", df.columns.tolist())
 
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2016-01-01"))
 end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("today"))
-
 model_type = st.sidebar.selectbox("Decomposition Model", ['additive', 'multiplicative'])
 
-# Fetch data from Yahoo Finance
-@st.cache_data
-def fetch_stock_data(ticker, start, end):
-    df = yf.download(ticker, start=start, end=end)[['Adj Close']]
-    df = df.rename(columns={'Adj Close': 'Close'})
-    df = df.asfreq('B')  # Business day frequency
-    df['Close'] = df['Close'].interpolate()
-    return df
-
-df = fetch_stock_data(ticker, start_date, end_date)
+# Filter and prepare data
+series = df[ticker].loc[start_date:end_date]
+series.name = 'Close'
 
 # Plot actual time series
 st.subheader(f"📈 {ticker} Stock Price (from {start_date})")
-st.line_chart(df['Close'])
+st.line_chart(series)
 
 # Decomposition
 st.subheader("📉 Time Series Decomposition")
 
 try:
-    result = seasonal_decompose(df['Close'], model=model_type, period=252)
+    result = seasonal_decompose(series, model=model_type, period=252)
 
     fig, axs = plt.subplots(4, 1, figsize=(14, 10), sharex=True)
 
@@ -54,10 +52,10 @@ try:
     axs[2].set_title('Seasonality')
 
     axs[3].plot(result.resid, label='Residual', color='red')
-    axs[3].set_title('Residual (White Noise)')
+    axs[3].set_title('Residual')
 
     plt.tight_layout()
     st.pyplot(fig)
 
 except ValueError as e:
-    st.warning(f"Unable to perform decomposition: {e}")
+    st.warning(f"Unable to decompose time series: {e}")
